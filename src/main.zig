@@ -1,21 +1,23 @@
 const std = @import("std");
-const lib = @import("lib.zig");
-const assert = @import("std").debug.assert;
+const term = @import("term.zig");
+const Drawable = @import("Drawable.zig");
 
-var cooked_termios: std.os.linux.termios = undefined;
+const assert = @import("std").debug.assert;
 
 const stdout = std.io.getStdOut().writer().any();
 const stdin = std.io.getStdIn().reader();
 
+const INTENSITY: []u8 = " .,-~:;=!*#$@";
+const MAX_INTENSITY = INTENSITY.len;
+const MIN_INTENSITY = 0;
+
 const TermBuffer = struct {
-    allocator: *const std.mem.Allocator,
     writer: *const std.io.AnyWriter,
     rows: usize = 0,
     cols: usize = 0,
 
-    fn init(allocator: *const std.mem.Allocator, writer: *const std.io.AnyWriter) !TermBuffer {
+    fn init(writer: *const std.io.AnyWriter) !TermBuffer {
         var self = TermBuffer{
-            .allocator = allocator,
             .writer = writer,
         };
 
@@ -29,7 +31,7 @@ const TermBuffer = struct {
     }
 
     fn updateSize(self: *TermBuffer) !void {
-        const termSize = try lib.getTermSize();
+        const termSize = try term.getTermSize();
         if (termSize.cols == self.cols and termSize.rows == self.rows) {
             return;
         } else {
@@ -50,44 +52,60 @@ const TermBuffer = struct {
 
 const BouncyX = struct {
     termBuffer: *TermBuffer,
-    x: usize = 0,
-    y: usize = 0,
+    x: f32 = 0,
+    y: f32 = 0,
 
-    vx: isize = 0,
-    vy: isize = 0,
+    vx: f32 = 0,
+    vy: f32 = 0,
 
-    fn draw(self: *BouncyX) !void {
-        try self.termBuffer.drawSingle('x', self.x, self.y);
+    ax: f32 = 0,
+    ay: f32 = 0,
+
+    gravity: f32 = 0.05,
+    friction: f32 = 0.95,
+
+    pub fn draw(self: *BouncyX) void {
+        self.termBuffer.drawSingle('x', @intFromFloat(self.x), @intFromFloat(self.y)) catch return;
     }
 
-    fn tick(self: *BouncyX) void {
-        // Clamp in case window is resized
-        self.x = std.math.clamp(self.x, 0, self.termBuffer.cols - 1);
-        self.y = std.math.clamp(self.y, 0, self.termBuffer.rows - 1);
+    pub fn tick(self: *BouncyX) void {
+        const buffer_cols = @as(f32, @floatFromInt(self.termBuffer.cols - 1));
+        const buffer_rows = @as(f32, @floatFromInt(self.termBuffer.rows - 1));
 
-        // Bounce
-        if (self.x == self.termBuffer.cols - 1 or self.x == 0) {
-            self.vx = -self.vx;
+        // Acceleration
+        self.vx += self.ax;
+        self.vy += self.ay + self.gravity;
+
+        // Friction
+        self.vx *= self.friction;
+
+        // Clamp in case window is resized
+        self.x = std.math.clamp(self.x, 0, buffer_cols);
+        self.y = std.math.clamp(self.y, 0, buffer_rows);
+
+        // Stop at wall
+        if (self.vx > 0 and self.x == buffer_cols or self.vx < 0 and self.x == 0) {
+            self.vx = 0;
         }
 
-        if (self.y == self.termBuffer.rows - 1 or self.y == 0) {
-            self.vy = -self.vy;
+        if (self.vy > 0 and self.y == buffer_rows or self.vy < 0 and self.y == 0) {
+            self.vy = 0;
         }
 
         // Move
-        var uvx: usize = @intCast(@abs(self.vx));
-        var uvy: usize = @intCast(@abs(self.vy));
+        var uvx: f32 = @abs(self.vx);
+        var uvy: f32 = @abs(self.vy);
 
         if (self.vx < 0) {
             uvx = @min(uvx, self.x);
         } else {
-            uvx = @min(uvx, self.termBuffer.cols - self.x - 1);
+            uvx = @min(uvx, buffer_cols - self.x);
         }
 
         if (self.vy < 0) {
             uvy = @min(uvy, self.y);
         } else {
-            uvy = @min(uvy, self.termBuffer.rows - self.y - 1);
+            uvy = @min(uvy, buffer_rows - self.y);
         }
 
         self.x = if (self.vx < 0) self.x - uvx else self.x + uvx;
@@ -95,91 +113,40 @@ const BouncyX = struct {
     }
 };
 
-fn uncookTerm() void {
-    // Save term attrs to restore later
-    if (std.os.linux.tcgetattr(0, &cooked_termios) < 0) {
-        std.io.getStdErr().writer().print("Could not read term settings :(\n");
-        std.os.exit(1);
-    }
-
-    var uncooked_termios: std.os.linux.termios = cooked_termios;
-
-    // https://www.reddit.com/r/Zig/comments/b0dyfe/polling_for_key_presses/
-    // Input
-    uncooked_termios.iflag.BRKINT = false;
-    uncooked_termios.iflag.ICRNL = false;
-    uncooked_termios.iflag.INPCK = false;
-    uncooked_termios.iflag.ISTRIP = false;
-    uncooked_termios.iflag.IXON = false;
-
-    // Output
-    uncooked_termios.lflag.ECHO = false;
-    uncooked_termios.lflag.ICANON = false;
-    uncooked_termios.lflag.ISIG = false;
-
-    // Non-blocking reads
-    uncooked_termios.cc[@intFromEnum(std.os.linux.V.MIN)] = 0;
-    uncooked_termios.cc[@intFromEnum(std.os.linux.V.TIME)] = 0;
-
-    if (std.os.linux.tcsetattr(0, std.os.linux.TCSA.NOW, &uncooked_termios) < 0) {
-        std.io.getStdErr().writer().print("Could not uncook term :(\n");
-        std.os.exit(1);
-    }
-}
-
-fn cookTerm() void {
-    if (std.os.linux.tcsetattr(0, std.os.linux.TCSA.NOW, &cooked_termios) < 0) {
-        std.io.getStdErr().writer().print("Could not cook term :(\n");
-        std.os.exit(1);
-    }
-}
-
-fn hideCursor(writer: *const std.io.AnyWriter) !void {
-    _ = try writer.write("\x1B[?25l");
-}
-
-fn showCursor(writer: *const std.io.AnyWriter) !void {
-    _ = try writer.write("\x1B[?25h");
-}
-
 pub fn main() !void {
-    uncookTerm();
-    defer cookTerm();
+    term.uncookTerm();
+    defer term.cookTerm();
 
-    try hideCursor(&stdout);
-    defer showCursor(&stdout) catch unreachable;
+    try term.hideCursor(&stdout);
+    defer term.showCursor(&stdout) catch unreachable;
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
+    var buffer: TermBuffer = try TermBuffer.init(&stdout);
 
-    const allocator = arena.allocator();
-    var buffer: TermBuffer = try TermBuffer.init(&allocator, &stdout);
+    var bouncy_x = BouncyX{ .vx = 0, .vy = 0, .termBuffer = &buffer };
+    var bouncy_drawable = Drawable.init(&bouncy_x);
 
-    var bouncy_x = BouncyX{ .vx = 1, .vy = 1, .termBuffer = &buffer };
-
-    var read_buff: [1]u8 = undefined;
+    var read_buff: [3]u8 = undefined;
     while (true) {
         // Read input
         if (try stdin.read(&read_buff) > 0) {
             switch (read_buff[0]) {
-                'x' => bouncy_x.vx += 1,
-                'y' => bouncy_x.vy += 1,
+                'a' => bouncy_x.vx -= 0.5,
+                's' => bouncy_x.vy += 0.5,
+                'd' => bouncy_x.vx += 0.5,
+                ' ' => bouncy_x.vy -= 1.5,
                 'q' => break,
                 else => {},
             }
 
-            read_buff[0] = 0x0;
+            @memset(&read_buff, 0);
         }
 
         try buffer.updateSize();
         try buffer.clearTerm();
-        // _ = buffer.clearBuffer();
 
-        // Draw stuff
-        bouncy_x.tick();
-        try bouncy_x.draw();
-
-        // _ = try buffer.draw();
+        // // Draw stuff
+        bouncy_drawable.tick();
+        bouncy_drawable.draw();
 
         std.time.sleep(10 * std.time.ns_per_ms);
     }
