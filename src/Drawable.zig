@@ -1,36 +1,37 @@
 const assert = @import("std").debug.assert;
 const t = @import("std").builtin.Type;
 const Drawable = @This();
+const Vec2D = @import("math.zig").Vec2D;
 
 ptr: *anyopaque,
 vtable: *const VTable,
 
 pub const VTable = struct {
     draw: *const fn (*anyopaque) void,
-    tick: *const fn (*anyopaque) void,
-    position: *const fn (*anyopaque) struct { *f32, *f32 },
-    speed: *const fn (*anyopaque) struct { *f32, *f32 },
-    intersect: *const fn (*anyopaque, f32, f32) bool,
+    tick: *const fn (*anyopaque) Vec2D(f32),
+    position: *const fn (*anyopaque) *Vec2D(f32),
+    speed: *const fn (*anyopaque) *Vec2D(f32),
+    intersect: *const fn (*anyopaque, Vec2D(f32)) bool,
 };
 
 pub fn draw(self: Drawable) void {
     return self.vtable.draw(self.ptr);
 }
 
-pub fn tick(self: Drawable) void {
+pub fn tick(self: Drawable) Vec2D(f32) {
     return self.vtable.tick(self.ptr);
 }
 
-pub fn position(self: Drawable) struct { *f32, *f32 } {
+pub fn position(self: Drawable) *Vec2D(f32) {
     return self.vtable.position(self.ptr);
 }
 
-pub fn speed(self: Drawable) struct { *f32, *f32 } {
+pub fn speed(self: Drawable) *Vec2D(f32) {
     return self.vtable.speed(self.ptr);
 }
 
-pub fn intersect(self: Drawable, x: f32, y: f32) bool {
-    return self.vtable.intersect(self.ptr, x, y);
+pub fn intersect(self: Drawable, pos: Vec2D(f32)) bool {
+    return self.vtable.intersect(self.ptr, pos);
 }
 
 // https://zig.news/yglcode/code-study-interface-idiomspatterns-in-zig-standard-libraries-4lkj
@@ -46,24 +47,24 @@ pub fn init(pointer: anytype) Drawable {
             self.draw();
         }
 
-        fn tick(ptr: *anyopaque) void {
+        fn tick(ptr: *anyopaque) Vec2D(f32) {
             const self: Ptr = @ptrCast(@alignCast(ptr));
-            self.tick();
+            return self.tick();
         }
 
-        fn position(ptr: *anyopaque) struct { *f32, *f32 } {
+        fn position(ptr: *anyopaque) *Vec2D(f32)  {
             const self: Ptr = @ptrCast(@alignCast(ptr));
-            return .{ &self.x, &self.y };
+            return &self.position;
         }
 
-        fn speed(ptr: *anyopaque) struct { *f32, *f32 } {
+        fn speed(ptr: *anyopaque) *Vec2D(f32)  {
             const self: Ptr = @ptrCast(@alignCast(ptr));
-            return .{ &self.vx, &self.vy };
+            return &self.speed;
         }
 
-        fn intersect(ptr: *anyopaque, x: f32, y: f32) bool {
+        fn intersect(ptr: *anyopaque, pos: Vec2D(f32)) bool {
             const self: Ptr = @ptrCast(@alignCast(ptr));
-            return self.intersect(x, y);
+            return self.intersect(pos);
         }
     };
 

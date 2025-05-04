@@ -4,6 +4,7 @@ const term = @import("term.zig");
 const Drawable = @import("Drawable.zig");
 const TermBuffer = @import("TermBuffer.zig");
 const Player = @import("game_objects/Player.zig");
+const Box = @import("game_objects/Box.zig");
 
 const assert = @import("std").debug.assert;
 
@@ -29,9 +30,12 @@ const GameState = struct {
     }
 
     pub fn tick(self: *GameState) void {
-         for (self.gameObjects.items) |game_object| {
-             game_object.tick();
-         }
+        for (self.gameObjects.items) |game_object| {
+
+            // Move object logic here, add collissions
+            const new_pos = game_object.tick();
+            game_object.position().* = new_pos;
+        }
     }
 };
 
@@ -44,24 +48,26 @@ pub fn main() !void {
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-
     const allocator = arena.allocator();
     var game_state: GameState = GameState.init(allocator);
 
     var buffer: TermBuffer = try TermBuffer.init(&stdout);
-    var player = Drawable.init(@constCast(&@as(Player, .{ .termBuffer = &buffer })));
+
+    var player = Drawable.init(@constCast(&Player{ .termBuffer = &buffer }));
+    // const box = Drawable.init(@constCast(&Box{ .termBuffer = &buffer, .x = 100, .y = 50 }));
 
     try game_state.gameObjects.append(player);
+    // try game_state.gameObjects.append(box);
 
     var read_buff: [3]u8 = undefined;
     while (true) {
         // Read input
         if (try stdin.read(&read_buff) > 0) {
             switch (read_buff[0]) {
-                'a' => player.speed()[0].* -= 0.5,
-                's' => player.speed()[1].* += 0.5,
-                'd' => player.speed()[0].* += 0.5,
-                ' ' => player.speed()[1].* -= 1.5,
+                'a' => player.speed().x -= 0.5,
+                's' => player.speed().y += 0.5,
+                'd' => player.speed().x += 0.5,
+                ' ' => player.speed().y -= 1.5,
                 'q' => break,
                 else => {},
             }
@@ -77,6 +83,7 @@ pub fn main() !void {
 
         // Draw stuff
         player.draw();
+        // box.draw();
 
         std.time.sleep(10 * std.time.ns_per_ms);
     }
