@@ -1,12 +1,12 @@
 const Box = @This();
 const TermBuffer = @import("../TermBuffer.zig");
 const std = @import("std");
-const Vec2D = @import("../math.zig").Vec2D;
+const Vec2f = @import("../math.zig").Vec2f;
 
 termBuffer: *TermBuffer,
-position: Vec2D(f32) = .{},
-speed: Vec2D(f32) = .{},
-acceleration: Vec2D(f32) = .{},
+position: Vec2f = .{},
+speed: Vec2f = .{},
+acceleration: Vec2f = .{},
 
 gravity: f32 = 0.05,
 friction: f32 = 0.95,
@@ -24,8 +24,15 @@ pub fn draw(self: *Box) void {
     }
 }
 
-pub fn tick(self: *Box) void {
-    _ = self;
+pub fn tick(self: *Box) Vec2f {
+    // Acceleration
+    self.speed += self.acceleration;
+    self.speed.y += self.acceleration.y + self.gravity;
+
+    // Friction
+    self.speed.x *= self.friction;
+
+    return self.speed;
 }
 
 pub fn intersect(self: *Box, x: f32, y: f32) bool {
