@@ -1,8 +1,9 @@
 const assert = @import("std").debug.assert;
-const t = @import("std").builtin.Type;
-const Drawable = @This();
-const Vec2f = @import("math.zig").Vec2f;
 
+const Vec2f = @import("math.zig").Vec2f;
+const BBox = @import("BBox.zig");
+
+const Drawable = @This();
 ptr: *anyopaque,
 vtable: *const VTable,
 
@@ -10,8 +11,9 @@ pub const VTable = struct {
     draw: *const fn (*anyopaque) void,
     tick: *const fn (*anyopaque) Vec2f,
     position: *const fn (*anyopaque) *Vec2f,
+    bbox: *const fn (*anyopaque) *BBox,
     speed: *const fn (*anyopaque) *Vec2f,
-    intersect: *const fn (*anyopaque, Vec2f) bool,
+    intersect: *const fn (*anyopaque, *const Drawable) ?BBox,
 };
 
 pub fn draw(self: Drawable) void {
@@ -22,6 +24,10 @@ pub fn tick(self: Drawable) Vec2f {
     return self.vtable.tick(self.ptr);
 }
 
+pub fn bbox(self: Drawable) *BBox {
+    return self.vtable.bbox(self.ptr);
+}
+
 pub fn position(self: Drawable) *Vec2f {
     return self.vtable.position(self.ptr);
 }
@@ -30,8 +36,8 @@ pub fn speed(self: Drawable) *Vec2f {
     return self.vtable.speed(self.ptr);
 }
 
-pub fn intersect(self: Drawable, pos: Vec2f) bool {
-    return self.vtable.intersect(self.ptr, pos);
+pub fn intersect(self: Drawable, other: *const Drawable) ?BBox {
+    return self.vtable.intersect(self.ptr, other);
 }
 
 // https://zig.news/yglcode/code-study-interface-idiomspatterns-in-zig-standard-libraries-4lkj
@@ -52,24 +58,29 @@ pub fn init(pointer: anytype) Drawable {
             return self.tick();
         }
 
-        fn position(ptr: *anyopaque) *Vec2f  {
+        fn bbox(ptr: *anyopaque) *BBox {
+            const self: Ptr = @ptrCast(@alignCast(ptr));
+            return &self.bbox;
+        }
+
+        fn position(ptr: *anyopaque) *Vec2f {
             const self: Ptr = @ptrCast(@alignCast(ptr));
             return &self.position;
         }
 
-        fn speed(ptr: *anyopaque) *Vec2f  {
+        fn speed(ptr: *anyopaque) *Vec2f {
             const self: Ptr = @ptrCast(@alignCast(ptr));
             return &self.speed;
         }
 
-        fn intersect(ptr: *anyopaque, pos: Vec2f) bool {
+        fn intersect(ptr: *anyopaque, other: *const Drawable) ?BBox {
             const self: Ptr = @ptrCast(@alignCast(ptr));
-            return self.intersect(pos);
+            return self.intersect(other);
         }
     };
 
     return .{
         .ptr = pointer,
-        .vtable = &.{ .draw = impl.draw, .tick = impl.tick, .position = impl.position, .speed = impl.speed, .intersect = impl.intersect },
+        .vtable = &.{ .draw = impl.draw, .tick = impl.tick, .position = impl.position, .bbox = impl.bbox, .speed = impl.speed, .intersect = impl.intersect },
     };
 }
