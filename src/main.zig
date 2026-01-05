@@ -23,31 +23,22 @@ const GameState = struct {
         return GameState{ .allocator = allocator, .buffer = buffer, .gameObjects = std.ArrayList(Drawable).init(allocator) };
     }
 
-    pub fn getObjectAt(self: *GameState, x: f32, y: f32) ?Drawable {
-        for (self.gameObjects.items) |game_object| {
-            if (game_object.intrsect(x, y)) {
-                return game_object;
-            }
-        }
-
-        return null;
-    }
-
     pub fn tick(self: *GameState) void {
         const cols_f = @as(f32, @floatFromInt(self.buffer.cols));
         const rows_f = @as(f32, @floatFromInt(self.buffer.rows));
 
-        for (self.gameObjects.items) |*game_object| {
+        for (self.gameObjects.items, 0..) |*game_object, i| {
             // Move object logic here, add collissions
             const dir_vec = game_object.tick();
 
             var new_position = game_object.position().* + dir_vec;
 
-            // Check for collisions with other objects
-            for (self.gameObjects.items) |*other_object| {
-                if (other_object == game_object) continue;
+            // Cache the transformed bounding box for this object
+            const bbox1 = game_object.bbox().toWorld(game_object.position());
 
-                const bbox1 = game_object.bbox().toWorld(game_object.position());
+            // Check for collisions with other objects
+            // Optimization: Only check objects after this one to avoid duplicate checks
+            for (self.gameObjects.items[i + 1 ..]) |*other_object| {
                 const bbox2 = other_object.bbox().toWorld(other_object.position());
 
                 if (bbox1.intersect(&bbox2)) |_| {
@@ -102,7 +93,8 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var buffer: TermBuffer = try TermBuffer.init(&stdout);
+    var buffer: TermBuffer = try TermBuffer.init(&stdout, allocator);
+    defer buffer.deinit();
     var game_state: GameState = GameState.init(allocator, &buffer);
 
     var player = Player.init(&buffer, Vec2f{ 0, 0 });
@@ -137,6 +129,9 @@ pub fn main() !void {
         for (game_state.gameObjects.items) |game_object| {
             game_object.draw();
         }
+
+        // Flush all accumulated draw commands to terminal
+        try buffer.flush();
 
         std.time.sleep(10 * std.time.ns_per_ms);
     }

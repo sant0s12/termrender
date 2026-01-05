@@ -46,9 +46,3 @@ pub fn tick(self: *Player) Vec2f {
 
     return self.speed;
 }
-
-pub fn intersect(self: *Player, other: *const Drawable) ?BBox {
-    _ = self;
-    _ = other;
-    return null;
-}

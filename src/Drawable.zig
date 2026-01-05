@@ -13,7 +13,6 @@ pub const VTable = struct {
     position: *const fn (*anyopaque) *Vec2f,
     bbox: *const fn (*anyopaque) *BBox,
     speed: *const fn (*anyopaque) *Vec2f,
-    intersect: *const fn (*anyopaque, *const Drawable) ?BBox,
 };
 
 pub fn draw(self: Drawable) void {
@@ -34,10 +33,6 @@ pub fn position(self: Drawable) *Vec2f {
 
 pub fn speed(self: Drawable) *Vec2f {
     return self.vtable.speed(self.ptr);
-}
-
-pub fn intersect(self: Drawable, other: *const Drawable) ?BBox {
-    return self.vtable.intersect(self.ptr, other);
 }
 
 // https://zig.news/yglcode/code-study-interface-idiomspatterns-in-zig-standard-libraries-4lkj
@@ -72,15 +67,10 @@ pub fn init(pointer: anytype) Drawable {
             const self: Ptr = @ptrCast(@alignCast(ptr));
             return &self.speed;
         }
-
-        fn intersect(ptr: *anyopaque, other: *const Drawable) ?BBox {
-            const self: Ptr = @ptrCast(@alignCast(ptr));
-            return self.intersect(other);
-        }
     };
 
     return .{
         .ptr = pointer,
-        .vtable = &.{ .draw = impl.draw, .tick = impl.tick, .position = impl.position, .bbox = impl.bbox, .speed = impl.speed, .intersect = impl.intersect },
+        .vtable = &.{ .draw = impl.draw, .tick = impl.tick, .position = impl.position, .bbox = impl.bbox, .speed = impl.speed },
     };
 }

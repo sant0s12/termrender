@@ -48,16 +48,10 @@ pub fn draw(self: *Box) void {
 pub fn tick(self: *Box) Vec2f {
     // Acceleration
     self.speed += self.acceleration;
-    self.speed[1] += self.acceleration[1] + self.gravity;
+    self.speed[1] += self.gravity;
 
     // Friction
     self.speed[0] *= self.friction;
 
     return self.speed;
-}
-
-pub fn intersect(self: *Box, other: *const Drawable) ?BBox {
-    _ = self;
-    _ = other;
-    return null;
 }
