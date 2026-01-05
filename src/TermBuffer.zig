@@ -37,7 +37,7 @@ pub fn updateSize(self: *TermBuffer) !void {
 
 pub fn clearTerm(self: *TermBuffer) !void {
     const code = "\x1B[2J\x1B[H";
-    _ = try self.writer.write(code);
+    try self.write_buffer.appendSlice(code);
 }
 
 pub fn drawSingle(self: *TermBuffer, char: u8, x: usize, y: usize) !void {
