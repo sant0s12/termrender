@@ -28,7 +28,7 @@ const GameState = struct {
         const rows_f = @as(f32, @floatFromInt(self.buffer.rows));
 
         for (self.gameObjects.items, 0..) |*game_object, i| {
-            // Move object logic here, add collissions
+            // Move object logic here, add collisions
             const dir_vec = game_object.tick();
 
             var new_position = game_object.position().* + dir_vec;
